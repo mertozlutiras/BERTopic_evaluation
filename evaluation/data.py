@@ -44,39 +44,12 @@ class DataLoader:
     ```
     """
 
-    def __init__(self, dataset: str):
+    def __init__(self, dataset: str, docs: List[str], timestamps: List[]):
         self.dataset = dataset
-        self.docs = None
-        self.timestamps = None
+        self.docs = docs
+        self.timestamps = timestamps
         self.octis_docs = None
         self.doc_path = None
-
-    def load_docs(
-        self, save: bool = False, docs: List[str] = None
-    ) -> Tuple[List[str], Union[List[str], None]]:
-        """Load in the documents
-
-        ```python
-        dataloader = DataLoader(dataset="trump")
-        docs, timestamps = dataloader.load_docs()
-        ```
-        """
-        if docs is not None:
-            return self.docs, None
-
-        if self.dataset == "trump":
-            self.docs, self.timestamps = self._trump()
-        elif self.dataset == "trump_dtm":
-            self.docs, self.timestamps = self._trump_dtm()
-        elif self.dataset == "un_dtm":
-            self.docs, self.timestamps = self._un_dtm()
-        elif self.dataset == "20news":
-            self.docs, self.timestamps = self._20news()
-
-        if save:
-            self._save(self.docs, save)
-
-        return self.docs, self.timestamps
 
     def load_octis(self, custom: bool = False) -> Dataset:
         """Get dataset from OCTIS
@@ -103,22 +76,6 @@ class DataLoader:
         self.octis_docs = data
         return self.octis_docs
 
-    def prepare_docs(self, save: bool = False, docs: List[str] = None):
-        """Prepare documents
-
-        Arguments:
-            save: The path to save the model to, make sure it ends in .json
-            docs: The documents you want to preprocess in OCTIS
-
-        Usage:
-
-        ```python
-        from evaluation import DataLoader
-        dataloader = DataLoader(dataset="my_docs").prepare_docs(save="my_docs.txt", docs=my_docs)
-        ```
-        """
-        self.load_docs(save, docs)
-        return self
 
     def preprocess_octis(
         self,
@@ -179,69 +136,7 @@ class DataLoader:
             documents_path = self.doc_path
         dataset = preprocessor.preprocess_dataset(documents_path=documents_path)
         dataset.save(output_folder)
-
-    def _trump(self) -> Tuple[List[str], List[str]]:
-        """Prepare the trump dataset"""
-        trump = pd.read_csv(
-            "https://drive.google.com/uc?export=download&id=1xRKHaP-QwACMydlDnyFPEaFdtskJuBa6"
-        )
-        trump = trump.loc[(trump.isRetweet == "f") & (trump.text != ""), :]
-        timestamps = trump.date.to_list()
-        docs = trump.text.to_list()
-        docs = [doc.lower().replace("\n", " ") for doc in docs if len(doc) > 2]
-        timestamps = [
-            timestamp for timestamp, doc in zip(timestamps, docs) if len(doc) > 2
-        ]
-        return docs, timestamps
-
-    def _trump_dtm(self) -> Tuple[List[str], List[str]]:
-        """Prepare the trump dataset including timestamps"""
-        trump = pd.read_csv(
-            "https://drive.google.com/uc?export=download&id=1xRKHaP-QwACMydlDnyFPEaFdtskJuBa6"
-        )
-        trump = trump.loc[(trump.isRetweet == "f") & (trump.text != ""), :]
-        timestamps = trump.date.to_list()
-        documents = trump.text.to_list()
-
-        docs = []
-        time = []
-        for doc, timestamp in zip(documents, timestamps):
-            if len(doc) > 2:
-                docs.append(doc.lower().replace("\n", " "))
-                time.append(timestamp)
-
-        # Create bins
-        nr_bins = 10
-        df = pd.DataFrame({"Doc": docs, "Timestamp": time}).sort_values("Timestamp")
-        df["Timestamp"] = pd.to_datetime(df["Timestamp"], infer_datetime_format=True)
-        df["Bins"] = pd.cut(df.Timestamp, bins=nr_bins)
-        df["Timestamp"] = df.apply(lambda row: row.Bins.left, 1)
-        timestamps = df.Timestamp.tolist()
-        documents = df.Doc.tolist()
-
-        return docs, timestamps
-
-    def _un_dtm(self) -> Tuple[List[str], List[str]]:
-        """Prepare the UN dataset"""
-
-        def create_paragraphs(text):
-            text = text.replace("Mr.\n", "Mr. ")
-            text = text.replace(".\n", " \p ")
-            text = text.replace(". \n ", " \p ")
-            text = text.replace(". \n", " \p ")
-            text = text.replace("\n", " ")
-            text = [x.strip().lower() for x in text.split("\p")]
-            return text
-
-        dataset = pd.read_csv(
-            "https://runestone.academy/runestone/books/published/httlads/_static/un-general-debates.csv"
-        )
-        dataset["text"] = dataset.apply(lambda row: create_paragraphs(row.text), 1)
-        dataset = dataset.explode("text").sort_values("year")
-        dataset = dataset.loc[dataset.year > 2005, :]
-        docs = dataset.text.tolist()
-        timestamps = dataset.year.tolist()
-        return docs, timestamps
+        
 
     def _save(self, docs: List[str], save: str):
         """Save the documents"""
